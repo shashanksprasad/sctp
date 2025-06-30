@@ -2,13 +2,12 @@ package main
 
 import (
 	"flag"
+	"github.com/loxilb-io/sctp"
 	"log"
 	"math/rand"
 	"net"
 	"strings"
 	"time"
-
-	"github.com/ishidawataru/sctp"
 )
 
 func serveClient(conn net.Conn, bufsize int) error {
@@ -103,7 +102,7 @@ func main() {
 				Port: *lport,
 			}
 		}
-		conn, err := sctp.DialSCTP("sctp", laddr, addr)
+		conn, err := sctp.DialSCTP("sctp", laddr, addr, false)
 		if err != nil {
 			log.Fatalf("failed to dial: %v", err)
 		}

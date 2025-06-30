@@ -95,7 +95,7 @@ func TestStreams(t *testing.T) {
 		go func(test int) {
 			defer func() { wait <- struct{}{} }()
 			conn, err := DialSCTPExt(
-				"sctp", nil, addr, InitMsg{NumOstreams: STREAM_TEST_STREAMS, MaxInstreams: STREAM_TEST_STREAMS})
+				"sctp", nil, addr, true, InitMsg{NumOstreams: STREAM_TEST_STREAMS, MaxInstreams: STREAM_TEST_STREAMS})
 			if err != nil {
 				t.Errorf("failed to dial address %s, test #%d: %v", addr.String(), test, err)
 				return

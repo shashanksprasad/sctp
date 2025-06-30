@@ -1,4 +1,6 @@
+//go:build !linux || (linux && 386)
 // +build !linux linux,386
+
 // Copyright 2019 Wataru Ishida. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -93,6 +95,6 @@ func DialSCTPExt(network string, laddr, raddr *SCTPAddr, options InitMsg) (*SCTP
 	return nil, ErrUnsupported
 }
 
-func dialSCTPExtConfig(network string, laddr, raddr *SCTPAddr, options InitMsg, control func(network string, address string, c syscall.RawConn) error, handler NotificationHandler) (*SCTPConn, error) {
+func dialSCTPExtConfig(network string, laddr, raddr *SCTPAddr, options InitMsg, block bool, control func(network, address string, c syscall.RawConn) error, handler NotificationHandler) (*SCTPConn, error) {
 	return nil, ErrUnsupported
 }

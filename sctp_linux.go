@@ -28,6 +28,120 @@ import (
 	"unsafe"
 )
 
+const (
+	EpollEventsNum = 8
+)
+
+type fdset syscall.FdSet
+
+func (s *fdset) Sys() *syscall.FdSet {
+	return (*syscall.FdSet)(s)
+}
+
+func (s *fdset) Set(fd uintptr) {
+	bits := 8 * unsafe.Sizeof(s.Bits[0])
+	if fd >= bits*uintptr(len(s.Bits)) {
+		panic("fdset: fd out of range")
+	}
+	n := fd / bits
+	m := fd % bits
+	s.Bits[n] |= 1 << m
+}
+
+func (s *fdset) IsSet(fd uintptr) bool {
+	bits := 8 * unsafe.Sizeof(s.Bits[0])
+	if fd >= bits*uintptr(len(s.Bits)) {
+		panic("fdset: fd out of range")
+	}
+	n := fd / bits
+	m := fd % bits
+	return s.Bits[n]&(1<<m) != 0
+}
+
+func WaitRead(pfd int) bool {
+
+	nfd := pfd + 1
+
+	for {
+		var r fdset
+		var w fdset
+		var err error
+		r.Set(*(*uintptr)((unsafe.Pointer(&pfd))))
+		w.Set(*(*uintptr)((unsafe.Pointer(&pfd))))
+
+		for {
+			_, err = syscall.Select(nfd, r.Sys(), w.Sys(), nil, &syscall.Timeval{Sec: 2, Usec: 0})
+			if err != syscall.EINTR {
+				break
+			}
+		}
+		if err != nil {
+			return false
+		}
+		if r.IsSet(*(*uintptr)(unsafe.Pointer(&pfd))) ||
+			w.IsSet(*(*uintptr)(unsafe.Pointer(&pfd))) {
+
+			var optval int
+			if optval, err = syscall.GetsockoptInt(pfd, syscall.SOL_SOCKET, syscall.SO_ERROR); err != nil {
+				return false
+			}
+
+			if optval > 0 {
+				return false
+			}
+			return true
+		}
+		return false
+	}
+}
+
+func WaitReadPoll(pfd int) bool {
+	var event syscall.EpollEvent
+	var events [EpollEventsNum]syscall.EpollEvent
+
+	epfd, e := syscall.EpollCreate1(0)
+	if e != nil {
+		panic("epoll: create failed")
+	}
+	defer syscall.Close(epfd)
+
+	event.Events = syscall.EPOLLIN | syscall.EPOLLOUT
+	event.Fd = int32(pfd)
+	if e = syscall.EpollCtl(epfd, syscall.EPOLL_CTL_ADD, pfd, &event); e != nil {
+		panic("epoll_ctl: failed")
+	}
+
+	retries := 0
+	for {
+		nevents, e := syscall.EpollWait(epfd, events[:], 500)
+		if e != nil {
+			break
+		}
+
+		for ev := 0; ev < nevents; ev++ {
+			if int(events[ev].Fd) == pfd {
+				var optval int
+				var err error
+				if optval, err = syscall.GetsockoptInt(pfd, syscall.SOL_SOCKET, syscall.SO_ERROR); err != nil {
+					return false
+				}
+
+				if optval > 0 {
+					return false
+				}
+				return true
+			}
+		}
+		if nevents == 0 {
+			retries++
+		}
+		if retries > 3 {
+			break
+		}
+	}
+	return false
+}
+
 func setsockopt(fd int, optname, optval, optlen uintptr) (uintptr, uintptr, error) {
 	// FIXME: syscall.SYS_SETSOCKOPT is undefined on 386
 	r0, r1, errno := syscall.Syscall6(syscall.SYS_SETSOCKOPT,
@@ -293,17 +407,17 @@ func (ln *SCTPListener) SyscallConn() (syscall.RawConn, error) {
 }
 
 // DialSCTP - bind socket to laddr (if given) and connect to raddr
-func DialSCTP(net string, laddr, raddr *SCTPAddr) (*SCTPConn, error) {
-	return DialSCTPExt(net, laddr, raddr, InitMsg{NumOstreams: SCTP_MAX_STREAM})
+func DialSCTP(net string, laddr, raddr *SCTPAddr, block bool) (*SCTPConn, error) {
+	return DialSCTPExt(net, laddr, raddr, block, InitMsg{NumOstreams: SCTP_MAX_STREAM})
 }
 
 // DialSCTPExt - same as DialSCTP but with given SCTP options
-func DialSCTPExt(network string, laddr, raddr *SCTPAddr, options InitMsg) (*SCTPConn, error) {
-	return dialSCTPExtConfig(network, laddr, raddr, options, nil, nil)
+func DialSCTPExt(network string, laddr, raddr *SCTPAddr, block bool, options InitMsg) (*SCTPConn, error) {
+	return dialSCTPExtConfig(network, laddr, raddr, options, block, nil)
 }
 
 // dialSCTPExtConfig - same as DialSCTP but with given SCTP options and socket configuration
-func dialSCTPExtConfig(network string, laddr, raddr *SCTPAddr, options InitMsg, control func(network, address string, c syscall.RawConn) error, notificationHandler NotificationHandler) (*SCTPConn, error) {
+func dialSCTPExtConfig(network string, laddr, raddr *SCTPAddr, options InitMsg, block bool, control func(network, address string, c syscall.RawConn) error, notificationHandler NotificationHandler) (*SCTPConn, error) {
 	af, ipv6only := favoriteAddrFamily(network, laddr, raddr, "dial")
 	sock, err := syscall.Socket(
 		af,
@@ -351,9 +465,25 @@ func dialSCTPExtConfig(network string, laddr, raddr *SCTPAddr, options InitMsg, 
 			return nil, err
 		}
 	}
+
+	// Set non-blocking call if requested
+	if !block {
+		flag, _, serr := syscall.Syscall(syscall.SYS_FCNTL, uintptr(sock), uintptr(syscall.F_GETFL), 0)
+		if serr == 0 {
+			syscall.Syscall(syscall.SYS_FCNTL, uintptr(sock), uintptr(syscall.F_SETFL), flag|syscall.O_NONBLOCK)
+		}
+	}
+
 	_, err = SCTPConnect(sock, raddr)
-	if err != nil {
+	if err != nil && (block || err != syscall.EINPROGRESS) {
 		return nil, err
+	}
+
+	if err == syscall.EINPROGRESS {
+		valid := WaitReadPoll(sock)
+		if !valid {
+			return nil, err
+		}
 	}
 	return NewSCTPConn(sock, notificationHandler), nil
 }
