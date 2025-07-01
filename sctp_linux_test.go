@@ -37,7 +37,7 @@ func TestNotificationHandlerAssignmentOnDialing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn, err := dialSCTPExtConfig(network, nil, addr, InitMsg{}, nil, notificationHandler)
+	conn, err := dialSCTPExtConfig(network, nil, addr, InitMsg{}, true, nil, notificationHandler)
 	if err != nil {
 		t.Fatalf("failed to establish connection due to: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestDialUseControlFuncWithoutLocalAddress(t *testing.T) {
 	raddr := &SCTPAddr{IPAddrs: []net.IPAddr{net.IPAddr{IP: net.IPv4(127, 0, 0, 1)}}}
 	initMsg := InitMsg{}
 	customControlFunc := validationControlFunc(t, network)
-	conn, err := dialSCTPExtConfig(network, nil, raddr, initMsg, customControlFunc, nil)
+	conn, err := dialSCTPExtConfig(network, nil, raddr, initMsg, true, customControlFunc, nil)
 	if err != nil && !strings.Contains(err.Error(), "connection refused") {
 		t.Fatalf("failed to dial connection due to: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestSyscallConn(t *testing.T) {
 	if raw == nil {
 		t.Fatalf("Expected non-nil RawConn, got nil")
 	}
-	conn, err := DialSCTP(network, nil, addr)
+	conn, err := DialSCTP(network, nil, addr, true)
 	if err != nil {
 		t.Fatalf("Failed to create SCTP connection: %v", err)
 	}

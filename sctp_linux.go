@@ -413,7 +413,7 @@ func DialSCTP(net string, laddr, raddr *SCTPAddr, block bool) (*SCTPConn, error)
 
 // DialSCTPExt - same as DialSCTP but with given SCTP options
 func DialSCTPExt(network string, laddr, raddr *SCTPAddr, block bool, options InitMsg) (*SCTPConn, error) {
-	return dialSCTPExtConfig(network, laddr, raddr, options, block, nil)
+	return dialSCTPExtConfig(network, laddr, raddr, options, block, nil, nil)
 }
 
 // dialSCTPExtConfig - same as DialSCTP but with given SCTP options and socket configuration

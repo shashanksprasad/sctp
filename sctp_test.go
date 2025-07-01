@@ -242,7 +242,7 @@ func TestGetStatus(t *testing.T) {
 			}()
 
 			// Create a client with default streams
-			c, err := DialSCTP("sctp", nil, ln.Addr().(*SCTPAddr))
+			c, err := DialSCTP("sctp", nil, ln.Addr().(*SCTPAddr), true)
 			if err != nil {
 				t.Fatalf("Failed to dial: %v", err)
 			}
@@ -325,7 +325,7 @@ func TestGetStatusUsage(t *testing.T) {
 	}()
 
 	// Create a client with default streams
-	c, err := DialSCTP("sctp", nil, ln.Addr().(*SCTPAddr))
+	c, err := DialSCTP("sctp", nil, ln.Addr().(*SCTPAddr), true)
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
 	}
